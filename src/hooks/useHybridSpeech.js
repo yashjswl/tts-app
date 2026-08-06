@@ -24,21 +24,17 @@ export function useHybridSpeech(deepgramApiKey, sarvamApiKey, language, onFinalT
   const audioRef = useRef(new Audio());
 
   const startListening = useCallback(async () => {
-    if (!deepgramApiKey && !sarvamApiKey) return alert("Please enter an API Key in Settings");
-    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const useDeepgram = DEEPGRAM_LANGS.includes(language);
 
       if (useDeepgram) {
-        if (!deepgramApiKey) return alert("Deepgram API Key is required for this language.");
-        
-        let wsUrl = `wss://api.deepgram.com/v1/listen?model=nova-3&language=${language}&smart_format=true&interim_results=true`;
+        let wsUrl = `wss://${window.location.host}/deepgram-api/v1/listen?model=nova-3&language=${language}&smart_format=true&interim_results=true`;
         if (language === 'hi-Latn') {
-          wsUrl = `wss://api.deepgram.com/v1/listen?language=hi-Latn&interim_results=true`;
+          wsUrl = `wss://${window.location.host}/deepgram-api/v1/listen?language=hi-Latn&interim_results=true`;
         }
         
-        const socket = new WebSocket(wsUrl, ['token', deepgramApiKey]);
+        const socket = new WebSocket(wsUrl);
         
         socket.onopen = () => {
           setIsListening(true);
