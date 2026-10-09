@@ -137,8 +137,16 @@ export function useHybridSpeech(language, onFinalTranscript) {
       try {
         const res = await fetch('/sarvam-api/speech-to-text', { method: 'POST', body: formData });
         if (!res.ok) {
-          console.error('Sarvam STT error', res.status, await res.text());
-          setError('The transcription service did not respond. Try again.');
+          const body = await res.text();
+          console.error('Sarvam STT error', res.status, body);
+          let reason = '';
+          try {
+            const parsed = JSON.parse(body);
+            reason = parsed.error?.message || parsed.error || parsed.message || '';
+          } catch {
+            // not JSON
+          }
+          setError(`The transcription service did not respond (${res.status}${reason ? `: ${reason}` : ''}).`);
           return;
         }
         const data = await res.json();
