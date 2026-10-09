@@ -1,124 +1,65 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, RefreshCw } from 'lucide-react';
-import ConversationView from './components/ConversationView';
-import SettingsModal from './components/SettingsModal';
-import { useHybridSpeech } from './hooks/useHybridSpeech';
-import './index.css';
+import { useEffect, useState } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { PrefsProvider, usePrefs } from './context/PrefsContext';
+import { useConversation } from './hooks/useConversation';
+import ConversationPage from './pages/ConversationPage';
+import AdminPage from './pages/AdminPage';
+import LoginPage from './pages/LoginPage';
+import ForcePasswordPage from './pages/ForcePasswordPage';
+import SettingsSheet from './components/SettingsSheet';
+import { APP_NAME } from './config';
 
-function App() {
-  const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState('');
-  const [sarvamApiKey, setSarvamApiKey] = useState('');
-  const [language, setLanguage] = useState('auto');
-  const [messages, setMessages] = useState([]);
-  const [isFlipped, setIsFlipped] = useState(false);
+function useRoute() {
+  const read = () => (window.location.hash === '#/people' ? 'people' : 'talk');
+  const [route, setRoute] = useState(read);
+  useEffect(() => {
+    const onChange = () => setRoute(read());
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+  }, []);
+  return route;
+}
+
+function Workspace() {
+  const { user } = useAuth();
+  const prefs = usePrefs();
+  const hashRoute = useRoute();
+  const route = hashRoute === 'people' && user.role === 'admin' ? 'people' : 'talk';
+  const convo = useConversation(prefs.language);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
-    const savedLanguage = localStorage.getItem('deepgramLanguage');
-    if (savedLanguage) setLanguage(savedLanguage);
-  }, []);
+    document.title = route === 'people' ? `People · ${APP_NAME}` : APP_NAME;
+  }, [route]);
 
-  const saveSettings = (newLang) => {
-    setLanguage(newLang);
-    localStorage.setItem('deepgramLanguage', newLang);
-  };
+  if (user.mustChangePassword) return <ForcePasswordPage />;
 
-  const onFinalTranscript = useCallback((text) => {
-    if (text.trim()) {
-      setMessages(prev => [...prev, { id: Date.now() + Math.random(), sender: 'B', text }]);
-    }
-  }, []);
-
-  const {
-    isListening,
-    interimTranscript,
-    startListening,
-    stopListening,
-    speak
-  } = useHybridSpeech(apiKey, sarvamApiKey, language, onFinalTranscript);
-
-  const handleSendText = (text, sender) => {
-    setMessages(prev => [...prev, { id: Date.now() + Math.random(), sender, text }]);
-    speak(text);
-  };
-
+  const openSettings = () => setSettingsOpen(true);
   return (
-    <div className="split-screen">
-      {/* Top Half */}
-      <ConversationView 
-        isReversed={true}
-        messages={messages}
-        myRole={isFlipped ? "A" : "B"}
-        interimTranscript={interimTranscript}
-        isListening={isListening}
-        onStartListen={startListening}
-        onStopListen={stopListening}
-        onSendText={handleSendText}
-      />
-
-      {/* Bottom Half */}
-      <ConversationView 
-        isReversed={false}
-        messages={messages}
-        myRole={isFlipped ? "B" : "A"}
-        interimTranscript={interimTranscript}
-        isListening={isListening}
-        onStartListen={startListening}
-        onStopListen={stopListening}
-        onSendText={handleSendText}
-      />
-
-      {/* Middle Controls Container */}
-      <div style={{
-        position: 'fixed',
-        top: '50%',
-        left: '0',
-        right: '0',
-        transform: 'translateY(-50%)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        padding: '0 16px',
-        zIndex: 100,
-        pointerEvents: 'none'
-      }}>
-        <button 
-          className="neu-button circle"
-          style={{
-            background: 'var(--bg-color)',
-            boxShadow: '4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light)',
-            pointerEvents: 'auto'
-          }}
-          onClick={() => setShowSettings(true)}
-          title="Settings"
-        >
-          <Settings size={20} />
-        </button>
-
-        <button 
-          className="neu-button circle"
-          style={{
-            background: 'var(--bg-color)',
-            boxShadow: '4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light)',
-            pointerEvents: 'auto'
-          }}
-          onClick={() => setIsFlipped(!isFlipped)}
-          title="Flip Views"
-        >
-          <RefreshCw size={20} />
-        </button>
+    <>
+      {/* Kept mounted so the microphone and transcript survive a trip to the People page. */}
+      <div className="view" hidden={route !== 'talk'}>
+        <ConversationPage convo={convo} route={route} onOpenSettings={openSettings} />
       </div>
-
-      {/* Settings Modal */}
-      {showSettings && (
-        <SettingsModal 
-          onClose={() => setShowSettings(false)}
-          saveSettings={saveSettings}
-          initialLang={language}
-          onClearChat={() => setMessages([])}
-        />
-      )}
-    </div>
+      {route === 'people' && <AdminPage route={route} onOpenSettings={openSettings} />}
+      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} onClear={convo.clear} />
+    </>
   );
 }
 
-export default App;
+function Gate() {
+  const { status } = useAuth();
+  if (status === 'loading') return <div className="splash" role="status">Loading…</div>;
+  if (status === 'anon') return <LoginPage />;
+  return <Workspace />;
+}
+
+export default function App() {
+  return (
+    <PrefsProvider>
+      <AuthProvider>
+        <Gate />
+      </AuthProvider>
+    </PrefsProvider>
+  );
+}

@@ -1,0 +1,118 @@
+.auth {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100dvh;
+  background: var(--ground);
+}
+.auth--single {
+  grid-template-rows: 1fr;
+}
+.auth__showcase {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem 1rem 1.5rem;
+  border-bottom: 3px solid var(--signal);
+  background: oklch(0.32 0.115 258);
+  color: var(--on-board);
+}
+.auth__showcase .brandmark {
+  --brandmark-edge: oklch(0.32 0.115 258);
+}
+.auth__headline {
+  max-width: 34ch;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: oklch(1 0 0 / 0.88);
+}
+.auth__showcase .sample {
+  display: none;
+}
+.auth__panel {
+  display: grid;
+  place-items: start center;
+  padding: 1.5rem 1rem 2rem;
+}
+.auth__form {
+  width: min(26rem, 100%);
+}
+.auth__title {
+  margin-bottom: 0.35rem;
+  font-size: 1.75rem;
+}
+.auth--single .auth__panel {
+  place-items: center;
+}
+
+/* Sample conversation shown beside the sign-in form on large screens */
+.sample {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 32rem;
+  padding: 1.25rem;
+  border: 1px solid oklch(1 0 0 / 0.2);
+  border-radius: var(--r-lg);
+  background: oklch(1 0 0 / 0.06);
+}
+.sample figcaption {
+  color: oklch(1 0 0 / 0.8);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.sample .board {
+  justify-self: start;
+}
+.sample__list {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.sample .msg__meta {
+  color: oklch(1 0 0 / 0.8);
+}
+.sample .msg--spoken .msg__text {
+  border-color: transparent;
+  background: oklch(0.98 0.004 250);
+  color: oklch(0.2 0.04 258);
+}
+.sample .msg--typed .msg__text {
+  background: oklch(0.47 0.14 258);
+}
+.sample .msg--live .msg__text {
+  border-color: oklch(1 0 0 / 0.55);
+  background: transparent;
+  color: oklch(1 0 0 / 0.9);
+}
+
+@media (min-width: 900px) {
+  .auth {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    grid-template-rows: 1fr;
+  }
+  .auth--single {
+    grid-template-columns: 1fr;
+  }
+  .auth__showcase {
+    align-content: space-between;
+    gap: 2rem;
+    padding: 3rem clamp(2rem, 5vw, 4.5rem);
+    border-bottom: 0;
+  }
+  .auth__headline {
+    max-width: 17ch;
+    font-size: clamp(2rem, 1rem + 2.6vw, 3.25rem);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    color: var(--on-board);
+    text-wrap: balance;
+  }
+  .auth__showcase .sample {
+    display: grid;
+  }
+  .auth__panel {
+    place-items: center;
+    padding: 3rem 2rem;
+  }
+}

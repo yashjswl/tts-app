@@ -1,0 +1,90 @@
+.admin {
+  min-height: 100dvh;
+}
+.admin__main {
+  display: grid;
+  gap: 1.25rem;
+  width: min(66rem, 100%);
+  margin-inline: auto;
+  padding: 1.5rem 1rem 3rem;
+}
+.admin__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.people {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+.person {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.person[data-disabled] .person__id {
+  opacity: 0.6;
+}
+.person__id {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+}
+.person__name {
+  font-weight: 700;
+}
+.person__email {
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+.person__meta {
+  display: grid;
+  justify-items: start;
+  gap: 0.35rem;
+}
+.person__seen {
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+.person__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.secret {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.secret code {
+  font-family: var(--font-data);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+
+@media (min-width: 900px) {
+  .admin__main {
+    padding-top: 2.5rem;
+  }
+  .person {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1.5rem;
+  }
+}

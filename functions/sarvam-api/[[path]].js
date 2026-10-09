@@ -1,43 +1,31 @@
-export async function onRequest(context) {
-  const { request, env } = context;
-  const url = new URL(request.url);
-  
-  // The path starts with /sarvam-api/. We need to strip that and forward to api.sarvam.ai
-  const targetPath = url.pathname.replace(/^\/sarvam-api\//, '/');
-  const targetURL = `https://api.sarvam.ai${targetPath}${url.search}`;
+// Authenticated proxy to Sarvam AI (speech-to-text and text-to-speech).
+// functions/_middleware.js has already verified the session and the request origin.
+// The API key never leaves the server.
+const ALLOWED_PATHS = new Set(['/speech-to-text', '/text-to-speech']);
 
-  // Read the SARVAM_API_KEY from the Cloudflare Environment Variables
-  const apiKey = env.SARVAM_API_KEY;
-
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: "SARVAM_API_KEY environment variable is missing" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+export async function onRequest({ request, env }) {
+  if (!env.SARVAM_API_KEY) {
+    return Response.json({ error: 'SARVAM_API_KEY environment variable is missing' }, { status: 500 });
   }
+  if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
-  // Create a new headers object, copying all incoming headers
-  const newHeaders = new Headers(request.headers);
-  // Inject the API key securely on the server side
-  newHeaders.set('api-subscription-key', apiKey);
-  // Prevent Host header mismatch issues
-  newHeaders.delete('host');
+  const url = new URL(request.url);
+  const targetPath = url.pathname.replace(/^\/sarvam-api/, '');
+  if (!ALLOWED_PATHS.has(targetPath)) return new Response('Not found', { status: 404 });
 
-  // Create the proxy request
-  const proxyRequest = new Request(targetURL, {
-    method: request.method,
-    headers: newHeaders,
-    body: request.body,
-    redirect: "manual"
-  });
+  const headers = new Headers(request.headers);
+  headers.delete('Cookie'); // never forward the session cookie to a third party
+  headers.delete('Host');
+  headers.set('api-subscription-key', env.SARVAM_API_KEY);
 
   try {
-    const response = await fetch(proxyRequest);
-    return response;
-  } catch (err) {
-    return new Response(JSON.stringify({ error: "Failed to fetch from Sarvam AI", details: err.message }), {
-      status: 502,
-      headers: { "Content-Type": "application/json" }
+    return await fetch(`https://api.sarvam.ai${targetPath}${url.search}`, {
+      method: 'POST',
+      headers,
+      body: request.body,
+      redirect: 'manual',
     });
+  } catch (err) {
+    return Response.json({ error: 'Failed to reach Sarvam AI', details: err.message }, { status: 502 });
   }
 }

@@ -1,324 +1,273 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { usesDeepgram, ttsLanguage } from '../lib/languages';
 
-// Languages routed to Deepgram for STT
-const DEEPGRAM_LANGS = ['en', 'hi', 'hi-Latn', 'bn', 'kn', 'mr', 'ta', 'te', 'ur', 'gu'];
+// Speech-to-text: Deepgram (streaming) for the languages it supports, Sarvam AI (VAD-chunked REST)
+// for the rest. Text-to-speech: Sarvam Bulbul, falling back to the browser's voices.
+// API keys live in the Pages Functions; the browser only ever talks to same-origin proxies.
 
-// Languages supported by Sarvam TTS (Bulbul v3)
-const SARVAM_TTS_LANGS = ['en-IN', 'hi-IN', 'bn-IN', 'ta-IN', 'te-IN', 'kn-IN', 'ml-IN', 'mr-IN', 'gu-IN', 'pa-IN', 'od-IN'];
+const VAD_THRESHOLD = 0.05; // RMS above which a frame counts as speech
+const SILENCE_CUT_MS = 1200; // pause after speech that closes a chunk
+const MAX_CHUNK_MS = 7000;
 
-export function useHybridSpeech(deepgramApiKey, sarvamApiKey, language, onFinalTranscript) {
+export function useHybridSpeech(language, onFinalTranscript) {
   const [isListening, setIsListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [error, setError] = useState('');
+
   const isSpeakingRef = useRef(false);
   const isListeningRef = useRef(false);
+  const socketRef = useRef(null);
+  const streamRef = useRef(null);
+  const recorderRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const vadTimerRef = useRef(null);
+  const audioRef = useRef(null);
+  const speakTimerRef = useRef(null);
 
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
   }, [isSpeaking]);
-  
-  const socketRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const processorRef = useRef(null);
-  const audioRef = useRef(new Audio());
 
-  const startListening = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const useDeepgram = DEEPGRAM_LANGS.includes(language);
-
-      if (useDeepgram) {
-        let wsUrl = `wss://${window.location.host}/deepgram-api/v1/listen?model=nova-3&language=${language}&smart_format=true&interim_results=true`;
-        if (language === 'hi-Latn') {
-          wsUrl = `wss://${window.location.host}/deepgram-api/v1/listen?language=hi-Latn&interim_results=true`;
-        }
-        
-        const socket = new WebSocket(wsUrl);
-        
-        socket.onopen = () => {
-          setIsListening(true);
-          const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-          mediaRecorder.addEventListener('dataavailable', (event) => {
-            if (event.data.size > 0 && socket.readyState === 1) {
-              socket.send(event.data);
-            }
-          });
-          mediaRecorder.start(250);
-          mediaRecorderRef.current = mediaRecorder;
-        };
-
-        socket.onmessage = (message) => {
-          if (isSpeakingRef.current) return;
-          const received = JSON.parse(message.data);
-          const newTranscript = received.channel?.alternatives[0]?.transcript;
-          if (newTranscript) {
-            if (received.is_final) {
-               onFinalTranscript(newTranscript);
-               setInterimTranscript('');
-            } else {
-               setInterimTranscript(newTranscript);
-            }
-          }
-        };
-
-        socketRef.current = socket;
-      } else {
-        // Use Sarvam AI STT via REST API (Foolproof chunking)
-        setIsListening(true);
-        isListeningRef.current = true;
-        
-        const sendToSarvamREST = async (rawBlob) => {
-          if (isSpeakingRef.current) return; // Mute during TTS
-          
-          // Strip codecs=opus from mimetype to satisfy strict Sarvam file validation
-          const cleanBlob = new Blob([rawBlob], { type: 'audio/webm' });
-          
-          const formData = new FormData();
-          formData.append('file', cleanBlob, 'audio.webm');
-          formData.append('model', 'saaras:v4');
-          formData.append('prompt', 'Transcribe exactly what is spoken.');
-          
-          try {
-            const res = await fetch('/sarvam-api/speech-to-text', {
-              method: 'POST',
-              body: formData
-            });
-            
-            if (res.ok) {
-              const data = await res.json();
-              
-              if (data.diarized_transcript && data.diarized_transcript.length > 0) {
-                 const formatted = data.diarized_transcript.map(segment => {
-                    const speakerName = segment.speaker.replace('speaker_', 'Speaker ');
-                    return `[${speakerName}] ${segment.text}`;
-                 }).join('\n');
-                 onFinalTranscript(formatted);
-              } else if (data.transcript && data.transcript.trim()) {
-                 onFinalTranscript(data.transcript.trim());
-              }
-            } else {
-              const errText = await res.text();
-              console.error("Sarvam REST API error:", res.status, res.statusText, errText);
-            }
-          } catch (err) {
-             console.error("Sarvam REST fetch error:", err);
-          }
-        };
-
-        // Dynamic VAD Chunking for REST API
-        let currentRecorder = null;
-        let vadInterval = null;
-        let chunkStartTime = 0;
-        let lastSpeechTime = 0;
-        let hasAudioInChunk = false;
-        
-        // Setup Audio Analyser for VAD
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        audioContextRef.current = audioContext;
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 512;
-        source.connect(analyser);
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        
-        const startNewChunk = () => {
-          if (!isListeningRef.current) return;
-          
-          hasAudioInChunk = false;
-          chunkStartTime = Date.now();
-          lastSpeechTime = Date.now(); // Initialize to prevent instant timeout
-          
-          const options = MediaRecorder.isTypeSupported('audio/webm') 
-            ? { mimeType: 'audio/webm' } 
-            : {};
-            
-          currentRecorder = new MediaRecorder(stream, options);
-          
-          // Fallback handler: if stopped manually by the user, just send whatever we have
-          currentRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
-              sendToSarvamREST(e.data);
-            }
-          };
-          
-          currentRecorder.start();
-          mediaRecorderRef.current = currentRecorder;
-        };
-        
-        const checkVAD = () => {
-          if (!isListeningRef.current) {
-            clearInterval(vadInterval);
-            return;
-          }
-          
-          analyser.getByteTimeDomainData(dataArray);
-          
-          // 1. Calculate the mean to remove DC offset (cheap mics often rest at values like 135 instead of 128)
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-          }
-          const mean = sum / dataArray.length;
-          
-          // 2. Calculate true AC RMS volume
-          let sumSquares = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            const normalized = (dataArray[i] - mean) / 128; // Normalize using dynamic mean
-            sumSquares += normalized * normalized;
-          }
-          const rms = Math.sqrt(sumSquares / dataArray.length);
-          
-          const now = Date.now();
-          
-          // 0.05 requires actual deliberate sound/speech. Background fans/static usually sit below 0.03.
-          const isSpeakingRightNow = rms > 0.05; 
-          
-          if (isSpeakingRightNow) {
-            if (!hasAudioInChunk) {
-               console.log("VAD detected speech! RMS Volume:", rms.toFixed(4));
-            }
-            hasAudioInChunk = true;
-            lastSpeechTime = now;
-          }
-          
-          const timeSinceLastSpeech = now - lastSpeechTime;
-          const currentChunkDuration = now - chunkStartTime;
-          
-          const shouldCutChunk = (hasAudioInChunk && timeSinceLastSpeech > 1200) || (currentChunkDuration > 7000);
-          
-          if (shouldCutChunk) {
-            if (currentRecorder && currentRecorder.state === 'recording') {
-              // Capture if speech was detected in a closure to avoid async wipe
-              const audioDetected = hasAudioInChunk;
-              currentRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0 && audioDetected) {
-                  sendToSarvamREST(e.data);
-                }
-              };
-              currentRecorder.stop();
-            }
-            startNewChunk();
-          }
-        };
-        
-        startNewChunk();
-        vadInterval = setInterval(checkVAD, 50);
-      }
-    } catch (err) {
-      console.error("Error starting STT:", err);
-      alert("Microphone access denied or error connecting to speech server.");
-    }
-  }, [deepgramApiKey, sarvamApiKey, language, onFinalTranscript]);
+  const releaseMic = useCallback(() => {
+    clearInterval(vadTimerRef.current);
+    vadTimerRef.current = null;
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
+    recorderRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    audioContextRef.current?.close().catch(() => {});
+    audioContextRef.current = null;
+  }, []);
 
   const stopListening = useCallback(() => {
-    if (socketRef.current) {
-      if (DEEPGRAM_LANGS.includes(language)) {
-        socketRef.current.send(JSON.stringify({ type: 'CloseStream' }));
+    isListeningRef.current = false;
+
+    const socket = socketRef.current;
+    socketRef.current = null;
+    if (socket) {
+      if (socket.readyState === WebSocket.OPEN) {
+        // Let Deepgram flush its last words, then close.
+        socket.send(JSON.stringify({ type: 'CloseStream' }));
+        setTimeout(() => socket.close(), 1500);
+      } else {
+        socket.close();
       }
     }
-    
-    isListeningRef.current = false;
-    
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current.onaudioprocess = null;
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-    }
-    
+
+    releaseMic();
     setIsListening(false);
     setInterimTranscript('');
-  }, [language]);
+  }, [releaseMic]);
 
-  const speak = useCallback(async (text) => {
-    if (!text) return;
-
-    setIsSpeaking(true);
-
-    let ttsLangCode = 'hi-IN'; // Default
-    
-    if (language !== 'auto') {
-      if (language === 'en') ttsLangCode = 'en-IN';
-      else if (language === 'hi' || language === 'hi-Latn') ttsLangCode = 'hi-IN';
-      else if (language === 'bn') ttsLangCode = 'bn-IN';
-      else if (language === 'ta') ttsLangCode = 'ta-IN';
-      else if (language === 'te') ttsLangCode = 'te-IN';
-      else if (language === 'kn') ttsLangCode = 'kn-IN';
-      else if (language === 'mr') ttsLangCode = 'mr-IN';
-      else if (language === 'gu') ttsLangCode = 'gu-IN';
-      else if (language === 'ur') ttsLangCode = 'hi-IN';
-      else if (SARVAM_TTS_LANGS.includes(language)) {
-        ttsLangCode = language;
-      }
-    } else {
-      const hasIndicScript = /[\u0900-\u0D7F]/.test(text);
-      ttsLangCode = hasIndicScript ? 'hi-IN' : 'en-IN';
-    }
-
+  const startListening = useCallback(async () => {
+    setError('');
+    let stream;
     try {
-      const response = await fetch('/sarvam-api/text-to-speech', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text: text,
-          language_code: ttsLangCode,
-          speaker: "ritu",
-          pace: 1.0,
-          model: "bulbul:v3"
-        })
-      });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setError('Microphone access was blocked. Allow the microphone in your browser settings, then try again.');
+      return;
+    }
+    streamRef.current = stream;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Sarvam TTS API Error Body:", errorText);
-        throw new Error(`Sarvam TTS failed: ${response.status} ${response.statusText}`);
+    if (usesDeepgram(language)) {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const query =
+        language === 'hi-Latn'
+          ? 'language=hi-Latn&interim_results=true'
+          : `model=nova-3&language=${language}&smart_format=true&interim_results=true`;
+      const socket = new WebSocket(`${protocol}://${window.location.host}/deepgram-api/v1/listen?${query}`);
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        isListeningRef.current = true;
+        setIsListening(true);
+        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        recorder.addEventListener('dataavailable', (event) => {
+          if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) socket.send(event.data);
+        });
+        recorder.start(250);
+        recorderRef.current = recorder;
+      };
+
+      socket.onmessage = (message) => {
+        if (isSpeakingRef.current) return;
+        const received = JSON.parse(message.data);
+        const transcript = received.channel?.alternatives?.[0]?.transcript;
+        if (!transcript) return;
+        if (received.is_final) {
+          onFinalTranscript(transcript);
+          setInterimTranscript('');
+        } else {
+          setInterimTranscript(transcript);
+        }
+      };
+
+      socket.onerror = () => {
+        if (socketRef.current === socket) {
+          setError('Could not connect to the speech service. Check your connection and sign-in, then try again.');
+        }
+      };
+
+      socket.onclose = () => {
+        if (socketRef.current === socket) {
+          // The server hung up (expired session, network drop): reflect it instead of staying "listening".
+          socketRef.current = null;
+          isListeningRef.current = false;
+          releaseMic();
+          setIsListening(false);
+          setInterimTranscript('');
+        }
+      };
+      return;
+    }
+
+    // Sarvam path: cut the mic stream into utterances with a simple volume-based VAD.
+    isListeningRef.current = true;
+    setIsListening(true);
+
+    const transcribe = async (blob) => {
+      if (isSpeakingRef.current) return; // stay quiet while the device is talking
+      const formData = new FormData();
+      formData.append('file', new Blob([blob], { type: 'audio/webm' }), 'audio.webm');
+      formData.append('model', 'saaras:v4');
+      formData.append('prompt', 'Transcribe exactly what is spoken.');
+
+      try {
+        const res = await fetch('/sarvam-api/speech-to-text', { method: 'POST', body: formData });
+        if (!res.ok) {
+          console.error('Sarvam STT error', res.status, await res.text());
+          setError('The transcription service did not respond. Try again.');
+          return;
+        }
+        const data = await res.json();
+        if (data.diarized_transcript?.length) {
+          onFinalTranscript(
+            data.diarized_transcript
+              .map((segment) => `[${segment.speaker.replace('speaker_', 'Speaker ')}] ${segment.text}`)
+              .join('\n')
+          );
+        } else if (data.transcript?.trim()) {
+          onFinalTranscript(data.transcript.trim());
+        }
+      } catch (err) {
+        console.error('Sarvam STT fetch error', err);
+        setError('Could not reach the transcription service.');
+      }
+    };
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    audioContextRef.current = audioContext;
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    audioContext.createMediaStreamSource(stream).connect(analyser);
+    const samples = new Uint8Array(analyser.frequencyBinCount);
+
+    let chunkStart = 0;
+    let lastSpeech = 0;
+    let heardSpeech = false;
+
+    const startChunk = () => {
+      if (!isListeningRef.current) return;
+      heardSpeech = false;
+      chunkStart = lastSpeech = Date.now();
+      const recorder = new MediaRecorder(stream, MediaRecorder.isTypeSupported('audio/webm') ? { mimeType: 'audio/webm' } : {});
+      // Stopped by the user mid-chunk: send what we have.
+      recorder.ondataavailable = (e) => e.data.size > 0 && transcribe(e.data);
+      recorder.start();
+      recorderRef.current = recorder;
+    };
+
+    const checkVoice = () => {
+      if (!isListeningRef.current) return;
+      analyser.getByteTimeDomainData(samples);
+      const mean = samples.reduce((sum, v) => sum + v, 0) / samples.length; // remove DC offset of cheap mics
+      const rms = Math.sqrt(samples.reduce((sum, v) => sum + ((v - mean) / 128) ** 2, 0) / samples.length);
+
+      const now = Date.now();
+      if (rms > VAD_THRESHOLD) {
+        heardSpeech = true;
+        lastSpeech = now;
       }
 
-      const result = await response.json();
-      
-      if (result.audios && result.audios.length > 0) {
-        const audioBase64 = result.audios[0];
-        const audioUrl = `data:audio/wav;base64,${audioBase64}`;
-        
+      const paused = heardSpeech && now - lastSpeech > SILENCE_CUT_MS;
+      if (paused || now - chunkStart > MAX_CHUNK_MS) {
+        const recorder = recorderRef.current;
+        if (recorder?.state === 'recording') {
+          const hadSpeech = heardSpeech;
+          recorder.ondataavailable = (e) => e.data.size > 0 && hadSpeech && transcribe(e.data);
+          recorder.stop();
+        }
+        startChunk();
+      }
+    };
+
+    startChunk();
+    vadTimerRef.current = setInterval(checkVoice, 50);
+  }, [language, onFinalTranscript, releaseMic]);
+
+  const finishSpeaking = useCallback(() => {
+    clearTimeout(speakTimerRef.current);
+    setIsSpeaking(false);
+  }, []);
+
+  const speak = useCallback(
+    async (text) => {
+      if (!text) return;
+      setIsSpeaking(true);
+      const lang = ttsLanguage(language, text);
+
+      // Some browsers never fire "ended"; do not leave the mic muted forever.
+      clearTimeout(speakTimerRef.current);
+      speakTimerRef.current = setTimeout(finishSpeaking, Math.min(60_000, 5000 + text.length * 150));
+
+      const speakWithBrowser = () => {
+        if (!('speechSynthesis' in window)) return finishSpeaking();
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = lang;
+        utterance.onend = finishSpeaking;
+        utterance.onerror = finishSpeaking;
+        window.speechSynthesis.speak(utterance);
+      };
+
+      try {
+        const res = await fetch('/sarvam-api/text-to-speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, language_code: lang, speaker: 'ritu', pace: 1.0, model: 'bulbul:v3' }),
+        });
+        if (!res.ok) throw new Error(`Sarvam TTS failed: ${res.status}`);
+
+        const result = await res.json();
+        if (!result.audios?.length) throw new Error('No audio returned');
+
+        audioRef.current ??= new Audio();
         const audio = audioRef.current;
-        audio.src = audioUrl;
-        audio.onended = () => setIsSpeaking(false);
-        audio.play();
-      } else {
-        throw new Error("No audio data returned");
+        audio.src = `data:audio/wav;base64,${result.audios[0]}`;
+        audio.onended = finishSpeaking;
+        audio.onerror = finishSpeaking;
+        await audio.play();
+      } catch (err) {
+        console.error('Sarvam TTS failed, using the browser voice', err);
+        speakWithBrowser();
       }
-      
-    } catch (err) {
-      console.error("Error with Sarvam TTS:", err);
-      // Fallback
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = ttsLangCode;
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(utterance);
-    }
-  }, [sarvamApiKey, language]);
+    },
+    [language, finishSpeaking]
+  );
 
-  const [needsRestart, setNeedsRestart] = useState(false);
+  // Switching language while the mic is open restarts it with the new engine.
   const languageRef = useRef(language);
-
+  const [needsRestart, setNeedsRestart] = useState(false);
   useEffect(() => {
-    if (languageRef.current !== language) {
-      languageRef.current = language;
-      if (isListening) {
-        stopListening();
-        setNeedsRestart(true);
-      }
+    if (languageRef.current === language) return;
+    languageRef.current = language;
+    if (isListeningRef.current) {
+      stopListening();
+      setNeedsRestart(true);
     }
-  }, [language, isListening, stopListening]);
+  }, [language, stopListening]);
 
   useEffect(() => {
     if (needsRestart && !isListening) {
@@ -327,12 +276,10 @@ export function useHybridSpeech(deepgramApiKey, sarvamApiKey, language, onFinalT
     }
   }, [needsRestart, isListening, startListening]);
 
-  return {
-    isListening,
-    interimTranscript,
-    isSpeaking,
-    startListening,
-    stopListening,
-    speak
-  };
+  // Release the microphone if the page unmounts while listening.
+  useEffect(() => () => stopListening(), [stopListening]);
+
+  const clearError = useCallback(() => setError(''), []);
+
+  return { isListening, interimTranscript, isSpeaking, error, clearError, startListening, stopListening, speak };
 }

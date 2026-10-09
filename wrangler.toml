@@ -1,0 +1,11 @@
+name = "tts-app"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "dist"
+
+# Users and sessions live in D1. Create the database once with:
+#   npx wrangler d1 create duologue
+# then paste the printed database_id below. Tables are created automatically on first use.
+[[d1_databases]]
+binding = "DB"
+database_name = "duologue"
+database_id = "0c4c782d-ee02-410e-9342-67b3b66ba858"

@@ -1,0 +1,7 @@
+# Copy to .dev.vars for local development with `npm run api`. Never commit .dev.vars.
+SARVAM_API_KEY=
+DEEPGRAM_API_KEY=
+# The administrator account is created the first time this email signs in with this password.
+ADMIN_INITIAL_PASSWORD=
+# Optional: change who the administrator is (default: yashasvi.jaiswal.2006@gmail.com).
+# ADMIN_EMAIL=
