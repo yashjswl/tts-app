@@ -1,6 +1,7 @@
 import BrandMark from '../components/BrandMark';
 import ChangePasswordForm from '../components/ChangePasswordForm';
 import { APP_NAME } from '../config';
+import Footer from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 
 export default function ForcePasswordPage() {
@@ -23,6 +24,7 @@ export default function ForcePasswordPage() {
           <button type="button" className="btn btn--ghost btn--block" onClick={logout}>
             Sign out
           </button>
+          <Footer />
         </div>
       </main>
     </div>

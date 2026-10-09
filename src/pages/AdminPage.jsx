@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Ban, Check, Copy, KeyRound, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import AppBar from '../components/AppBar';
 import Dialog from '../components/Dialog';
+import Footer from '../components/Footer';
 import Notice from '../components/Notice';
 import { api } from '../lib/api';
 import { formatDateTime } from '../lib/format';
@@ -198,6 +199,7 @@ export default function AdminPage({ route, onOpenSettings }) {
           </ul>
         )}
       </main>
+      <Footer />
 
       <Dialog open={dialog?.type === 'add'} onClose={closeDialog} title="Add person">
         <AddPersonForm onCreated={({ user, temporaryPassword }) => {

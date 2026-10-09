@@ -4,6 +4,7 @@ import BrandMark from '../components/BrandMark';
 import Notice from '../components/Notice';
 import PasswordField from '../components/PasswordField';
 import { APP_NAME, TAGLINE } from '../config';
+import Footer from '../components/Footer';
 import { useAuth } from '../context/AuthContext';
 
 // Synthetic sample, shown only to explain what the product does.
@@ -112,6 +113,7 @@ export default function LoginPage() {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        <Footer />
       </main>
     </div>
   );

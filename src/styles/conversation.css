@@ -74,7 +74,7 @@
 .face {
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr) auto;
   height: 100dvh;
   overflow: hidden;
 }
@@ -83,11 +83,11 @@
   flex-direction: column;
   gap: 0.5rem;
   min-height: 0;
-  padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
+  padding: 0.75rem;
 }
 .half--rotated {
   transform: rotate(180deg);
-  padding-bottom: calc(0.75rem + env(safe-area-inset-top));
+  padding-bottom: calc(1.5rem + env(safe-area-inset-top));
 }
 .half > * {
   width: min(100%, 60rem);
@@ -148,6 +148,23 @@
   top: auto;
   bottom: calc(50% + 36px);
   transform: rotate(180deg);
+}
+
+/* ---------- Footer ---------- */
+.footer {
+  padding: 0.5rem 1rem;
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+.footer--bar {
+  padding-block: 0.3rem;
+  padding-bottom: calc(0.3rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+.auth__form .footer {
+  padding-top: 1rem;
 }
 
 /* ---------- App bar ---------- */

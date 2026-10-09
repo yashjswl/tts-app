@@ -7,6 +7,7 @@ import MicButton from '../components/MicButton';
 import Composer from '../components/Composer';
 import Notice from '../components/Notice';
 import Segmented from '../components/Segmented';
+import Footer from '../components/Footer';
 import { LANGUAGES, getLanguage } from '../lib/languages';
 import { TEXT_SIZES, usePrefs } from '../context/PrefsContext';
 import { useMediaQuery } from '../lib/useMediaQuery';
@@ -126,6 +127,7 @@ export default function SharedLayout({ convo, route, onOpenSettings }) {
 
         {isDesktop && <Rail convo={convo} speech={speech} language={language} onFace={() => prefs.update({ layout: 'face' })} />}
       </div>
+      <Footer className="footer--bar" />
     </div>
   );
 }

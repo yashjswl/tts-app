@@ -409,7 +409,7 @@ textarea.field {
     box-shadow: 0 0 0 0 oklch(0.87 0.17 92 / 0.65);
   }
   to {
-    box-shadow: 0 0 0 20px oklch(0.87 0.17 92 / 0);
+    box-shadow: 0 0 0 14px oklch(0.87 0.17 92 / 0);
   }
 }
 

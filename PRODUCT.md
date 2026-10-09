@@ -7,7 +7,7 @@
 web
 
 ## Users
-Two people holding one conversation: a deaf or hard-of-hearing person who communicates by typing, and a hearing person who communicates by speaking. They meet in person (one phone, tablet or laptop between them) and, on a laptop, also in remote conversations and calls. Languages are mostly Indian (Hindi, Hinglish, Bengali, Tamil, Telugu, Kannada, Marathi, Gujarati, Urdu and more) plus English. Accounts are invite-only; one admin (yashasvi.jaiswal.2006@gmail.com) manages who can sign in.
+Two people holding one conversation: a deaf or hard-of-hearing person who communicates by typing, and a hearing person who communicates by speaking. They meet in person (one phone, tablet or laptop between them) and, on a laptop, also in remote conversations and calls. Languages are mostly Indian (Hindi, Hinglish, Bengali, Tamil, Telugu, Kannada, Marathi, Gujarati, Urdu and more) plus English. Accounts are invite-only; one administrator manages who can sign in.
 
 ## Product Purpose
 Duologue turns speech into live text for the person who cannot hear, and typed text into spoken audio for the person who can. Success is a conversation that flows without an interpreter or a notepad, in the language both people actually use.

@@ -4,6 +4,7 @@ import Transcript from '../components/Transcript';
 import MicButton from '../components/MicButton';
 import Composer from '../components/Composer';
 import Notice from '../components/Notice';
+import Footer from '../components/Footer';
 import { getLanguage } from '../lib/languages';
 
 function Half({ role, rotated, convo, language }) {
@@ -63,6 +64,7 @@ export default function FaceToFaceLayout({ convo, languageCode, flipped, onFlip,
       </div>
 
       <Half role={bottomRole} convo={convo} language={language} />
+      <Footer className="footer--bar" />
 
       {convo.error && (
         <>

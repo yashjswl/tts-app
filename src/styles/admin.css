@@ -1,9 +1,13 @@
 .admin {
+  display: flex;
+  flex-direction: column;
   min-height: 100dvh;
 }
 .admin__main {
   display: grid;
   gap: 1.25rem;
+  flex: 1;
+  align-content: start;
   width: min(66rem, 100%);
   margin-inline: auto;
   padding: 1.5rem 1rem 3rem;
@@ -83,7 +87,7 @@
     padding-top: 2.5rem;
   }
   .person {
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1.2fr) minmax(14rem, 1fr) auto;
     align-items: center;
     gap: 1.5rem;
   }
